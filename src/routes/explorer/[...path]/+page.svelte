@@ -65,6 +65,31 @@
         renamingValue = file.name;
     }
 
+    async function handleDownload(file: FileItem) {
+        try {
+            const res = await fetch(`/api/download?path=${encodeURIComponent(file.path)}`);
+
+            if (!res.ok) {
+                const result = await res.json();
+                throw new Error(result.error);
+            }
+
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = file.name;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error("Download error:", err);
+            push(err instanceof Error ? err.message : "Failed to download.", { duration: 3000 });
+        }
+    }
+
     async function deleteFile(file: FileItem) {
 
         if (file.type === 'folder') {
@@ -607,6 +632,19 @@
                                                 }}
                                             >
                                                 Delete
+                                            </button>
+
+                                            <button
+                                                class="w-full text-left px-4 py-2 hover:bg-zinc-700 cursor-pointer"
+                                                onclick={(event) => {
+                                                    event.stopPropagation();
+
+                                                    handleDownload(file);
+
+                                                    openedMenuPath = null;
+                                                }}
+                                            >
+                                                Download
                                             </button>
 
                                         </div>
