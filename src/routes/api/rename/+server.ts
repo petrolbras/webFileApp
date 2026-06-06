@@ -39,8 +39,6 @@ export async function POST({ request }) {
         const availableNewName = await GetAvailableName(path.resolve(STORAGE_DIR, currentPath), sanitizedNewName);
         const finalNewPath = path.resolve(STORAGE_DIR, currentPath, availableNewName);
 
-        
-
         const exists = await fs
             .access(oldPath)
             .then(() => true)
