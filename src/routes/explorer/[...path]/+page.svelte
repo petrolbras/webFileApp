@@ -179,6 +179,11 @@
             return;
         }
 
+        if (newFolderName.includes('.')) {
+            push('Folder names cannot contain extensions.', { duration: 3000 });
+            return;
+        }
+
         try {
             const res = await fetch('/api/create-folder', {
                 method: 'POST',
