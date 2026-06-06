@@ -60,7 +60,11 @@
         path: string;
     }
 
-    export function startRename(file: FileItem) {
+    function autofocus(node: HTMLInputElement) {
+        node.focus();
+    }
+
+    function startRename(file: FileItem) {
         renamingPath = file.path;
         renamingValue = file.name;
     }
@@ -463,6 +467,7 @@
                                 <span class="text-3xl">📁</span>
 
                                 <input
+                                    use:autofocus
                                     bind:value={newFolderName}
                                     onkeydown={(event) => {
                                         if (event.key === 'Enter') {
@@ -490,6 +495,7 @@
                                 <span class="text-3xl">📄</span>
 
                                 <input
+                                    use:autofocus
                                     bind:value={newFileName}
                                     onkeydown={(event) => {
                                         if (event.key === 'Enter') {
