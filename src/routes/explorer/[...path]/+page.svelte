@@ -2,7 +2,7 @@
     import type { PageData } from './$types';
     import { invalidateAll } from '$app/navigation';
     import { push } from '$lib/components/toast.svelte';
-    import { faFile, faFolderOpen, faPlus } from '@fortawesome/free-solid-svg-icons';
+    import { faFile, faFolderOpen, faPlus, faMagnifyingGlass } from '@fortawesome/free-solid-svg-icons';
     import Fa from 'svelte-fa';
 
     let { data }: { data: PageData } = $props();
@@ -16,6 +16,11 @@
     let openedMenuPath = $state<string | null>(null);
     let renamingPath = $state<string | null>(null);
     let renamingValue = $state('');
+
+    let searchOpen = $state(false);
+    let searchQuery = $state('');
+    let searchSubmitted = $state(false);
+    let searchResults: FileItem[] = $state([]);
 
     $effect(() => {
         data.currentPath;
@@ -50,6 +55,8 @@
 
     });
 
+    const displayedFiles = $derived.by(() => files);
+
     let fileInput: HTMLInputElement;
     let folderInput: HTMLInputElement;
     interface FileItem {
@@ -68,6 +75,33 @@
         renamingPath = file.path;
         renamingValue = file.name;
     }
+
+    async function fetchSearchResults(searchQuery: string) {
+        if (!searchQuery.trim()) {
+            searchSubmitted = false;
+            searchResults = [];
+            return;
+        }
+
+        searchSubmitted = true;
+
+        try {
+            const res = await fetch(`/api/search?query=${encodeURIComponent(searchQuery)}`);
+
+            if (!res.ok) {
+                const result = await res.json();
+                throw new Error(result.error);
+            }
+
+            const result = await res.json();
+
+            searchResults = result;
+        } catch (err) {
+            console.error("Search error:", err);
+            push(err instanceof Error ? err.message : "Search failed.", { duration: 3000 });
+        }
+    }
+
 
     async function handleDownload(file: FileItem) {
         try {
@@ -334,7 +368,7 @@
                     onchange={handleUpload}
                 />
 
-                <div class="relative ml-auto flex flex-col items-center gap-2">
+                <div class="relative ml-auto flex flex-col items-center gap-2 pb-5">
  
                     <div class="relative ml-auto flex items-end gap-2">
 
@@ -422,7 +456,50 @@
 
                 {/each}
 
+                <a
+                    class="ml-auto hover:text-blue-400 transition-colors" href="/explorer/search"
+                    onclick={(event: MouseEvent) => {
+                        event.preventDefault();
+                        searchOpen = !searchOpen;
+
+                        if (searchOpen) {
+                            searchQuery = '';
+                        } else {
+                            searchQuery = '';
+                            searchResults = [];
+                            searchSubmitted = false;
+                        }
+                    }}
+                >
+                    <Fa icon={faMagnifyingGlass}></Fa>
+                </a>
+
             </nav>
+
+            {#if searchOpen}
+
+                <div class="mt-4">
+
+                    <input
+                        type="text"
+                        bind:value={searchQuery}
+                        onkeydown={(event) => {
+                            if (event.key === 'Enter') {
+                                fetchSearchResults(searchQuery);
+                            } else if (event.key === 'Escape') {
+                                searchOpen = false;
+                                searchQuery = '';
+                                searchResults = [];
+                                searchSubmitted = false;
+                            }
+                        }}
+                        placeholder="Search..."
+                        class="w-full bg-zinc-800 border border-zinc-600 rounded px-3 py-2 outline-none text-zinc-100"
+                    />
+
+                </div>
+
+            {/if}
 
         </div>
 
@@ -438,237 +515,284 @@
 
                 <ul class="divide-y divide-zinc-800">
 
-                    {#if data.currentPath === ''}
+                        {#if searchOpen}
 
-                        <div class="flex items-center gap-3 px-5 py-4 text-zinc-400">
-                            <span>This is the root folder.</span>
-                        </div>
+                            {#if searchSubmitted}
 
-                    {:else}
+                                {#if searchResults.length === 0}
 
-                        <li>
+                                    <li class="px-5 py-4 text-zinc-400 bg-zinc-950">
+                                        Files not found.
+                                    </li>
 
-                            <a
-                                href={parentPath ? `/explorer/${parentPath}` : '/explorer'}
-                                class="flex items-center gap-3 px-5 py-4 hover:bg-zinc-800 transition-colors text-zinc-300"
-                            >
+                                {:else}
 
-                                <span class="text-xl">◀</span>
+                                    <li class="px-5 py-4 text-zinc-400 bg-zinc-950">
+                                        Found {searchResults.length} result(s):
+                                    </li>
 
-                                <span class="mt-1">Back</span>
+                                    {#each searchResults as file}
+                                        <li>
 
-                            </a>
+                                            <div class="relative flex items-center gap-4 px-5 py-4 hover:bg-zinc-800 transition-colors">
 
-                        </li>
+                                                <span class="text-3xl shrink-0">
+                                                    {file.type === 'folder' ? '📁' : '📄'}
+                                                </span>
 
-                    {/if}
+                                                <div class="flex flex-col min-w-0 flex-1">
 
-                    {#if creatingFolder}
+                                                    <span class="text-xl text-zinc-100 break-all">
+                                                        {file.name}
+                                                    </span>
 
-                        <li class="px-5 py-4">
+                                                    <span class="text-xs text-zinc-500 break-all">
+                                                        {file.path}
+                                                    </span>
 
-                            <div class="flex items-center gap-4">
+                                                    <div class="flex items-center gap-2 text-sm text-zinc-500">
+                                                        <span>{file.size}</span>
+                                                    </div>
 
-                                <span class="text-3xl">📁</span>
+                                                </div>
 
-                                <input
-                                    use:autofocus
-                                    bind:value={newFolderName}
-                                    onkeydown={(event) => {
-                                        if (event.key === 'Enter') {
-                                            createFolder();
-                                        } else if (event.key === 'Escape') {
-                                            creatingFolder = false;
-                                        }
-                                    }}
-                                    class="bg-zinc-800 border border-zinc-600 rounded px-3 py-2 outline-none"
-                                    placeholder="Folder name"
-                                />
+                                            </div>
 
-                            </div>
+                                        </li>
+                                    {/each}
 
-                        </li>
+                                {/if}
 
-                    {/if}
-                    
-                    {#if creatingFile}
+                            {/if}
 
-                        <li class="px-5 py-4">
+                        {:else}
 
-                            <div class="flex items-center gap-4">
+                        {#if data.currentPath === ''}
+                            <li class="px-5 py-4 text-zinc-400 bg-zinc-950">
+                                This is the root folder.
+                            </li>
 
-                                <span class="text-3xl">📄</span>
+                        {:else}
 
-                                <input
-                                    use:autofocus
-                                    bind:value={newFileName}
-                                    onkeydown={(event) => {
-                                        if (event.key === 'Enter') {
-                                            createFile();
-                                        } else if (event.key === 'Escape') {
-                                            creatingFile = false;
-                                        }
-                                    }}
-                                    class="bg-zinc-800 border border-zinc-600 rounded px-3 py-2 outline-none"
-                                    placeholder="File name"
-                                />
+                            <li>
 
-                            </div>
+                                <a
+                                    href={parentPath ? `/explorer/${parentPath}` : '/explorer'}
+                                    class="flex items-center gap-3 px-5 py-4 hover:bg-zinc-800 transition-colors text-zinc-300"
+                                >
+                                    <span class="text-xl">◀</span>
+                                    <span class="mt-1">Back</span>
+                                </a>
 
-                        </li>
+                            </li>
 
-                    {/if}
+                        {/if}
 
-                    {#if data.files.length === 0}
+                        {#if creatingFolder}
 
-                        <div class="rounded-xl overflow-hidden">
-                            
-                            <div class="p-6 text-zinc-400 bg-zinc-950">
-                                Empty folder.
-                            </div>
+                            <li class="px-5 py-4">
 
-                        </div>
+                                <div class="flex items-center gap-4">
 
-                    {/if}
+                                    <span class="text-3xl">📁</span>
 
-                    {#each files as file}
+                                    <input
+                                        use:autofocus
+                                        bind:value={newFolderName}
+                                        onkeydown={(event) => {
+                                            if (event.key === 'Enter') {
+                                                createFolder();
+                                            } else if (event.key === 'Escape') {
+                                                creatingFolder = false;
+                                            }
+                                        }}
+                                        class="bg-zinc-800 border border-zinc-600 rounded px-3 py-2 outline-none"
+                                        placeholder="Folder name"
+                                    />
 
-                        <li>
+                                </div>
 
-                            <div class="relative flex items-center gap-4 px-5 py-4 hover:bg-zinc-800 transition-colors">
+                            </li>
 
-                                <span class="text-3xl shrink-0">
-                                    {file.type === 'folder' ? '📁' : '📄'}
-                                </span>
+                        {/if}
 
-                                <div class="flex flex-col min-w-0 flex-1">
+                        {#if creatingFile}
 
-                                    {#if renamingPath === file.path}
+                            <li class="px-5 py-4">
 
-                                        <input
-                                            bind:value={renamingValue}
-                                            class="bg-zinc-800 border border-zinc-600 rounded px-3 py-2 outline-none text-zinc-100"
-                                            onkeydown={(event) => {
+                                <div class="flex items-center gap-4">
 
-                                                if (event.key === 'Enter') {
-                                                    renameFile(file);
-                                                }
+                                    <span class="text-3xl">📄</span>
 
-                                                if (event.key === 'Escape') {
-                                                    renamingPath = null;
-                                                }
+                                    <input
+                                        use:autofocus
+                                        bind:value={newFileName}
+                                        onkeydown={(event) => {
+                                            if (event.key === 'Enter') {
+                                                    createFile();
+                                            } else if (event.key === 'Escape') {
+                                                creatingFile = false;
+                                            }
+                                        }}
+                                        class="bg-zinc-800 border border-zinc-600 rounded px-3 py-2 outline-none"
+                                        placeholder="File name"
+                                    />
 
+                                </div>
+
+                            </li>
+
+                        {/if}
+
+                        {#if data.files.length === 0}
+
+                                <li class="px-5 py-4 text-zinc-400 bg-zinc-950">
+                                    Empty folder.
+                                </li>
+
+                        {/if}
+
+                        {#each displayedFiles as file}
+
+                            <li>
+
+                                <div class="relative flex items-center gap-4 px-5 py-4 hover:bg-zinc-800 transition-colors">
+
+                                    <span class="text-3xl shrink-0">
+                                        {file.type === 'folder' ? '📁' : '📄'}
+                                    </span>
+
+                                    <div class="flex flex-col min-w-0 flex-1">
+
+                                            {#if renamingPath === file.path}
+
+                                                <input
+                                                    bind:value={renamingValue}
+                                                    class="bg-zinc-800 border border-zinc-600 rounded px-3 py-2 outline-none text-zinc-100"
+                                                    onkeydown={(event) => {
+
+                                                        if (event.key === 'Enter') {
+                                                            renameFile(file);
+                                                        }
+
+                                                        if (event.key === 'Escape') {
+                                                            renamingPath = null;
+                                                        }
+
+                                                    }}
+                                                />
+
+                                            {:else}
+
+                                                {#if file.type === 'folder'}
+
+                                                    <a
+                                                        href={
+                                                            data.currentPath
+                                                                ? `/explorer/${data.currentPath}/${file.name}`
+                                                                : `/explorer/${file.name}`
+                                                        }
+                                                        class="text-xl text-zinc-100 break-all hover:text-blue-400"
+                                                    >
+                                                        {file.name}
+                                                    </a>
+
+                                                {:else}
+
+                                                    <span class="text-xl text-zinc-100 break-all">
+                                                        {file.name}
+                                                    </span>
+
+                                                {/if}
+                                                
+                                            {/if}        
+                                        
+
+                                            <div class="flex items-center gap-2 text-sm text-zinc-500">
+
+                                                <span>{file.size}</span>
+
+                                                {#if file.type === 'file'}
+                                                    <span>.{file.mime}</span>
+                                                {/if}
+
+                                            </div>
+
+                                    </div>
+
+                                    <div class="relative">
+
+                                        <button
+                                            type="button"
+                                            class="bg-zinc-800 px-3 py-2 rounded-lg hover:bg-zinc-700 border border-zinc-600 cursor-pointer"
+                                            onclick={() => {
+                                                openedMenuPath =
+                                                    openedMenuPath === file.path
+                                                        ? null
+                                                        : file.path;
                                             }}
-                                        />
+                                        >
+                                            ...
+                                        </button>
 
-                                    {:else}
+                                        {#if openedMenuPath === file.path}
 
-                                        {#if file.type === 'folder'}
-
-                                            <a
-                                                href={
-                                                    data.currentPath
-                                                        ? `/explorer/${data.currentPath}/${file.name}`
-                                                        : `/explorer/${file.name}`
-                                                }
-                                                class="text-xl text-zinc-100 break-all hover:text-blue-400"
+                                            <div
+                                                class="absolute right-0 top-full mt-2 min-w-32 bg-zinc-800 border border-zinc-600 rounded-lg shadow-lg overflow-hidden z-50"
                                             >
-                                                {file.name}
-                                            </a>
 
-                                        {:else}
+                                                <button
+                                                    class="w-full text-left px-4 py-2 hover:bg-zinc-700 cursor-pointer"
+                                                    onclick={(event) => {
+                                                        event.stopPropagation();
 
-                                            <span class="text-xl text-zinc-100 break-all">
-                                                {file.name}
-                                            </span>
+                                                        startRename(file);
 
-                                        {/if}
+                                                        openedMenuPath = null;
+                                                    }}
+                                                >
+                                                    Rename
+                                                </button>
 
-                                    {/if}
+                                                <button
+                                                    class="w-full text-left px-4 py-2 hover:bg-zinc-700 cursor-pointer"
+                                                    onclick={(event) => {
+                                                        event.stopPropagation();
 
-                                    <div class="flex items-center gap-2 text-sm text-zinc-500">
+                                                        deleteFile(file);
 
-                                        <span>{file.size}</span>
+                                                        openedMenuPath = null;
+                                                    }}
+                                                >
+                                                    Delete
+                                                </button>
 
-                                        {#if file.type === 'file'}
-                                            <span>.{file.mime}</span>
+                                                <button
+                                                    class="w-full text-left px-4 py-2 hover:bg-zinc-700 cursor-pointer"
+                                                    onclick={(event) => {
+                                                        event.stopPropagation();
+
+                                                        handleDownload(file);
+
+                                                        openedMenuPath = null;
+                                                    }}
+                                                >
+                                                    Download
+                                                </button>
+
+                                            </div>
+
                                         {/if}
 
                                     </div>
 
                                 </div>
 
-                                <div class="relative">
+                            </li>
 
-                                    <button
-                                        type="button"
-                                        class="bg-zinc-800 px-3 py-2 rounded-lg hover:bg-zinc-700 border border-zinc-600 cursor-pointer"
-                                        onclick={() => {
-                                            openedMenuPath =
-                                                openedMenuPath === file.path
-                                                    ? null
-                                                    : file.path;
-                                        }}
-                                    >
-                                        ...
-                                    </button>
+                        {/each}
 
-                                    {#if openedMenuPath === file.path}
-
-                                        <div
-                                            class="absolute right-0 top-full mt-2 min-w-32 bg-zinc-800 border border-zinc-600 rounded-lg shadow-lg overflow-hidden z-50"
-                                        >
-
-                                            <button
-                                                class="w-full text-left px-4 py-2 hover:bg-zinc-700 cursor-pointer"
-                                                onclick={(event) => {
-                                                    event.stopPropagation();
-
-                                                    startRename(file);
-
-                                                    openedMenuPath = null;
-                                                }}
-                                            >
-                                                Rename
-                                            </button>
-
-                                            <button
-                                                class="w-full text-left px-4 py-2 hover:bg-zinc-700 cursor-pointer"
-                                                onclick={(event) => {
-                                                    event.stopPropagation();
-
-                                                    deleteFile(file);
-
-                                                    openedMenuPath = null;
-                                                }}
-                                            >
-                                                Delete
-                                            </button>
-
-                                            <button
-                                                class="w-full text-left px-4 py-2 hover:bg-zinc-700 cursor-pointer"
-                                                onclick={(event) => {
-                                                    event.stopPropagation();
-
-                                                    handleDownload(file);
-
-                                                    openedMenuPath = null;
-                                                }}
-                                            >
-                                                Download
-                                            </button>
-
-                                        </div>
-
-                                    {/if}
-
-                                </div>
-
-                            </div>
-
-                        </li>
-
-                    {/each}
+                        {/if}
 
                 </ul>
 
